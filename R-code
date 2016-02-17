@@ -1,0 +1,139 @@
+#***************section 1- data manipulation************#
+install.packages("corrplot")
+library('corrplot')
+bankrupcy.data <- read.csv("bankruptcy.csv", header = T)
+summary(bankrupcy.data$DLRSN)
+hist(bankrupcy.data$DLRSN)
+
+#select training and testing data
+subset <- sample(nrow(bankrupcy.data), nrow(bankrupcy.data) * 0.8)
+bankrupcy.train = bankrupcy.data[subset, ]
+bankrupcy.test = bankrupcy.data[-subset, ]
+str(bankrupcy.train)
+
+#convert some variables into numeric
+bankrupcy.train$CUSIP=as.numeric(bankrupcy.train$CUSIP)
+bankrupcy.test$CUSIP=as.numeric(bankrupcy.test$CUSIP)
+
+#correlation plot of variables:
+corrplot(cor(bankrupcy.train),method = 'color')
+
+#**Section 2- fit a logistic regression model on the training data*********#
+#fit a logistic model and select the varaibles based on AIC
+bankrupcy.glm <- glm( DLRSN ~ .-FYEAR-CUSIP, family = binomial, bankrupcy.train)
+bankrupcy.glm.step=step(bankrupcy.glm,direction = 'both')#backward is default or step function
+bankrupcy.glm.aicModel= glm( DLRSN ~ R1 + R2 + R3 + R6 + R7 + R8 + R9 + R10, family = binomial, bankrupcy.train)
+AIC(bankrupcy.glm.aicModel)
+#AIC 2502.027
+# model DLRSN ~ R1 + R2 + R3 + R6 + R7 + R8 + R9 + R10
+#**************************************************************************************#
+#ROC AIC model out sample
+library(verification)
+roc.plot(bankrupcy.test$DLRSN=='1',threshold = seq(0.1,0.9, 0.1),prob.aicModel.outsample)
+roc.plot(bankrupcy.test$DLRSN=='1',threshold = seq(0.1,0.9, 0.1),prob.aicModel.outsample)$roc.vol
+#AUC 0.8983
+
+#Test the model's performance by calculating out of sample mis classification rate
+prob.aicModel.outsample=predict(bankrupcy.glm.aicModel,bankrupcy.test,type = 'response')
+pred.aicModel.outsample=predict(bankrupcy.glm.aicModel,bankrupcy.test,type='response')>1/16
+pred.aicModel.outsample=as.numeric(pred.aicModel.outsample)
+mytable2=table(bankrupcy.test$DLRSN,pred.aicModel.outsample,dnn=c('True','Predicted'))
+mytable2
+misrate2=(mytable2[1,2]+mytable2[2,1])/sum(mytable2[,])
+misrate2 
+#Misclassification rate of 33.54%
+
+#***Section 3- cross validation *********************************************#
+#** In this section we will compare the AUC and misclassification rates of model on test sample VS 5 - fold cross validation **##
+# cross validation and cost function as misclassification rate
+pcut = 1/16
+
+cost1 <- function(r, pi) {
+  weight1 = 15
+  weight0 = 1
+  c1 = (r == 1) & (pi < pcut)  #logical vector - true if actual 1 but predict 0 ( type2 error)
+  c0 = (r == 0) & (pi > pcut)  #logical vecotr - true if actual 0 but predict 1 ( type1 error)
+  return(mean(weight1 * c1 + weight0 * c0))
+} # r is observed binary response and pi is predicted probability
+
+cost0 <- function(r, pi) {
+mytable2=table(r,pi>1/16,dnn=c('True','Predicted'))
+misrate2=(mytable2[1,2]+mytable2[2,1])/sum(mytable2[,])
+return(misrate2) #symmetric cost information
+}
+
+library(boot)
+bankrupcy.glm2 = glm(DLRSN ~ R1 + R2 + R3 + R6 + R7 + R8 + R9 + R10 , family = binomial , bankrupcy.data)
+pcut = 1/16
+cv.result.cost1 = cv.glm(bankrupcy.data, bankrupcy.glm2,cost0, 5) # 10 - folds cross validation
+cv.result.cost1$delta
+# cv.result$delta 
+#0.3414275 0.3415372
+
+# cost of logistic model built using AIC selection
+cost0(bankrupcy.test$DLRSN,prob.aicModel.outsample)
+#seed =100
+#0.3299632 - for logistic model
+
+#5 fold cross validation of AUC
+cv.result.costlogit = cv.glm(bankrupcy.data, bankrupcy.glm.aicModel,cost1, 5)
+library("verification")
+cost2 <- function(r1, pi1) {
+  prob.glm2.fulldata = predict(bankrupcy.glm2, bankrupcy.data, type = 'response') # this has the values of probabilities
+  r1 = bankrupcy.data$DLRSN == '1'
+  pi1 = prob.glm2.fulldata
+  return(roc.plot(bankrupcy.data$DLRSN == '1', prob.glm2.fulldata)$roc.vol$Area)
+  print(roc.plot(bankrupcy.data$DLRSN == '1', prob.glm2.fulldata)$roc.vol)
+} 
+cv.result.cost2 = cv.glm(bankrupcy.data, bankrupcy.glm2, cost2, 5) # 10 - folds cross validation
+cv.result.cost2$delta
+# seed 100
+# cv.result.cost2$delta 0.8780538 0.8780538
+# seed 99
+#0.8780538 0.8780538
+# AUC for part iii
+#AUC for AIC model on testing dataset sample
+library(verification)
+roc.plot(bankrupcy.test$DLRSN=='1',threshold = seq(0.1,0.9, 0.1),prob.aicModel.outsample)
+roc.plot(bankrupcy.test$DLRSN=='1',threshold = seq(0.1,0.9, 0.1),prob.aicModel.outsample)$roc.vol
+
+#0.8983785
+
+#*****Section 4- fit a CART model on training data************************************#
+#** In this section we are fitting a CART for the training data**#
+#Fitting a classification tree with asymetric cost
+bankrupcy.rpart = rpart(DLRSN ~ . -FYEAR -CUSIP, data= bankrupcy.train, method = 'class'
+                        ,parms = list(loss = matrix(c(0,15,1,0),nrow=2)),cp=0.005)
+plot(bankrupcy.rpart)
+text(bankrupcy.rpart)
+bankrupcy.test.pred.tree = predict(bankrupcy.rpart, bankrupcy.test, type= 'class')
+
+#******Section 5- perfromance of CART Vs Logit***********************************************#
+#** Measure the performance of CART vs logistic based on misclassification rate on test sample**#
+#compare the misclassification rate
+
+bankrupcy.test.pred.tree = predict(bankrupcy.rpart, bankrupcy.test, type= 'class')
+tabletree= table(bankrupcy.test$DLRSN, bankrupcy.test.pred.tree, dnn = c("Truth", "Predicted"))
+misratetree=(tabletree[1,2]+tabletree[2,1])/sum(tabletree[,])
+misratetree 
+#0.2757353
+
+tablelogit=table(bankrupcy.test$DLRSN,pred.aicModel.outsample,dnn=c('True','Predicted'))
+misratelogit=(tablelogit[1,2]+tablelogit[2,1])/sum(tablelogit[,])
+misratelogit
+#0.3299632
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
