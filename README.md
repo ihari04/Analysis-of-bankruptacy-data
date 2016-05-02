@@ -6,12 +6,12 @@ About the data: the dataset has 13 variables including the independant variable.
 the dependant variable is binary response of 0 and 1.
 Because this is classification problem, logistic regression and CART are used
 
-Methodology:
-1. Logisitc model is fit on the data by AIC step wise selection
-2. p -cut off of 1/16 is determined using search grid technique over various cut offs 
-3. Cross validation is done on the logistic model to understand it's out of sample performance
-4. Regression tree also fit on the data
-5. The performance of Logit and CART are measured on the basis of misclassification rate
+Methodology:</br>
+1. Logisitc model is fit on the data by AIC step wise selection</br>
+2. p -cut off of 1/16 is determined using search grid technique over various cut offs </br>
+3. Cross validation is done on the logistic model to understand it's out of sample performance</br>
+4. Regression tree also fit on the data</br>
+5. The performance of Logit and CART are measured on the basis of misclassification rate</br>
 
 
 Major results:
